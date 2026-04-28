@@ -11,23 +11,42 @@ struct hash_table_t {
     int table_size;
 };
 
+struct hash_function_t {
+    unsigned long long (*func)(const char *str);
+    const char *hash_name;
+};
+
+extern "C" { int MyStrlen(const char *str); };
+
 hash_table_t CreateHashTable(int table_size);
 int CheckIfStringIsInTableCellAndInsertIt(hash_table_t *hash_table, int cell_index, const char *compare_string);
 int CheckIfStringIsInTableCell(hash_table_t *hash_table, int cell_index, const char *compare_string);
 int CheckIfStringIsInHashTable(hash_table_t *hash_table, const char *compare_string);
 int CheckIfStringIsInTableCell_optimized(hash_table_t *hash_table, int cell_index, const char *compare_string);
 
-int CountHash(const char *str);
+int PrintHashFuncs();
+hash_table_t CreateHashTableBasedOnDefaultFile(const hash_function_t curr_hash_func);
 
-int ZeroHash(const char *str);
-int FirstLetterHash(const char *str);
-int WorldLenHash(const char *str);
-int AsciiSumHash(const char *str);
+unsigned long long CountHash(const char *str);
+unsigned long long ZeroHash(const char *str);
+unsigned long long FirstLetterHash(const char *str);
+unsigned long long WordLenHash(const char *str);
+unsigned long long AsciiSumHash(const char *str);
 unsigned long long RolHash(const char *str);
 unsigned long long RorHash(const char *str);
-unsigned long DJB2Hash(const char *str);
-unsigned int CRC32Hash(const char *str);
-unsigned int Crc32Hash_optimized(const char *str);
+unsigned long long DJB2Hash(const char *str);
+unsigned long long CRC32Hash(const char *str);
+unsigned long long Crc32Hash_optimized(const char *str);
+
+const hash_function_t HASH_FUNCS_ARRAY[] = {{ZeroHash, "Zero-hash"}, 
+                                            {FirstLetterHash, "Hash-FirstLetterASCIICode"}, 
+                                            {WordLenHash, "Hash-LenOfWord"}, 
+                                            {AsciiSumHash, "Hash-AsciiSumOfLetters"}, 
+                                            {RolHash, "ROL-hash"}, 
+                                            {RorHash, "ROR-hash"}, 
+                                            {DJB2Hash, "DJB2"}, 
+                                            {CRC32Hash, "CRC-32"}};
+const int HASH_FUNCS_COUNT = sizeof(HASH_FUNCS_ARRAY) / sizeof(hash_function_t);
 
 int DrawHashTableDump(hash_table_t *hash_table, const char *file_name, const char *function_name, int line_number);
 int PrintHashCellsSizes(hash_table_t *hash_table);
