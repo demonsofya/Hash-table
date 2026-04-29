@@ -87,11 +87,33 @@ int CheckIfStringIsInTableCell(hash_table_t *hash_table, int cell_index, const c
     return 0;
 }
 
-int CheckIfStringIsInTableCell_optimized(hash_table_t *hash_table, int cell_index, const char *compare_string) {
+int CheckIfStringIsInTableCell_optimized(hash_table_t *hash_table, volatile int cell_index, const char *compare_string) {
 
     if (hash_table->table[cell_index].list_size == 0)
         return 0;
 
+    volatile bool cmp_result = 0;
+    volatile long long i = 1;
+    char *curr_string = NULL;
+    volatile list_t *curr_list = &(hash_table->table[cell_index]);
+
+    asm volatile (
+        "1:\n"
+        "mov %4, qword ptr [%1]\n"              // %4 = data ptr = data[0]
+        "vmovups ymm0, ymmword ptr [%2]\n"      // mov [rcx] to ymm0
+        "vmovups ymm1, ymmword ptr [%4 + 8*%3]\n"      // mov [data + i*8]=current string ptr -> to ymm1
+        "vptest ymm0, ymm1\n"                   // bit and (like test) just for ymm regs (AVX)
+        "setc %0\n"                             // set bits if carry
+        "vzeroupper\n"
+        "cmp %0, 0\n"                           // str == compare_str - ?
+        "jne 2f\n"                              // cmp_result != 0 => return 
+        "mov %4, qword ptr [%1 + 8]\n"          // ptr to table[cell_index].next
+        "mov %k3, dword ptr [%4 + 4*%3]\n"      // rdx = [curr_list + 8] -> i = [rdx + 4*i] = table[cell_index].next[i]
+        "cmp %k3, 0\n"                           // i == 0?
+        "jne 1b\n"                              // i != 0 => next cycle iteration
+        "2:" : "+r"(cmp_result), "+r"(curr_list), "+r"(compare_string), "+r"(i), "+r"(curr_string) :); 
+
+/*
     for (int i = 1; i != 0; i = hash_table->table[cell_index].next[i]) { // TODO: загнать в asm
 
         bool cmp_result = 0;
@@ -105,7 +127,10 @@ int CheckIfStringIsInTableCell_optimized(hash_table_t *hash_table, int cell_inde
         if (cmp_result)
             return 1; // jmp на метку
     }
-
+*/
+    if (cmp_result)
+        return 1;
+    
     return 0;
 }
 
