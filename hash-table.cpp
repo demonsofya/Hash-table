@@ -8,6 +8,7 @@
 #include <string.h>
 #include <nmmintrin.h>
 #include <ammintrin.h>
+#include <emmintrin.h>
 
 //-----------------------------------------------------------------------------
 
@@ -92,29 +93,30 @@ int CheckIfStringIsInTableCell_optimized(hash_table_t *hash_table, volatile int 
     if (hash_table->table[cell_index].list_size == 0)
         return 0;
 
-    volatile bool cmp_result = 0;
-    volatile long long i = 1;
+    bool cmp_result = 0;
+    long long i = 1;
     char *curr_string = NULL;
-    volatile list_t *curr_list = &(hash_table->table[cell_index]);
+    list_t *curr_list = &(hash_table->table[cell_index]);
 
     asm volatile (
-        "1:\n"
-        "mov %4, qword ptr [%1]\n"              // %4 = data ptr = data[0]
+        "1:\n"                                  // cycle begin
+        "mov %4, qword ptr [%1]\n"              // %4 = data ptr
+        "mov %4, qword ptr [%4 + 8*%3]\n"       // %4 = data[i] = ptr of current string
         "vmovups ymm0, ymmword ptr [%2]\n"      // mov [rcx] to ymm0
-        "vmovups ymm1, ymmword ptr [%4 + 8*%3]\n"      // mov [data + i*8]=current string ptr -> to ymm1
+        "vmovups ymm1, ymmword ptr [%4]\n"      // mov current string ptr to ymm1
         "vptest ymm0, ymm1\n"                   // bit and (like test) just for ymm regs (AVX)
-        "setc %0\n"                             // set bits if carry
+        "setc %0\n"                             // set bits if carry (!= 0 if ymm1 != ymm2)
         "vzeroupper\n"
         "cmp %0, 0\n"                           // str == compare_str - ?
         "jne 2f\n"                              // cmp_result != 0 => return 
         "mov %4, qword ptr [%1 + 8]\n"          // ptr to table[cell_index].next
         "mov %k3, dword ptr [%4 + 4*%3]\n"      // rdx = [curr_list + 8] -> i = [rdx + 4*i] = table[cell_index].next[i]
-        "cmp %k3, 0\n"                           // i == 0?
+        "cmp %k3, 0\n"                          // i == 0?
         "jne 1b\n"                              // i != 0 => next cycle iteration
         "2:" : "+r"(cmp_result), "+r"(curr_list), "+r"(compare_string), "+r"(i), "+r"(curr_string) :); 
 
-/*
-    for (int i = 1; i != 0; i = hash_table->table[cell_index].next[i]) { // TODO: загнать в asm
+/* 
+    for (int i = 1; i != 0; i = hash_table->table[cell_index].next[i]) { // TODO: загнать в asm // DONE и это абсолютно ничего не дало
 
         bool cmp_result = 0;
         asm volatile( // это cmp на asm
@@ -128,10 +130,7 @@ int CheckIfStringIsInTableCell_optimized(hash_table_t *hash_table, volatile int 
             return 1; // jmp на метку
     }
 */
-    if (cmp_result)
-        return 1;
-    
-    return 0;
+    return cmp_result;
 }
 
 int CheckIfStringIsInHashTable(hash_table_t *hash_table, const char *compare_string) {
@@ -171,7 +170,7 @@ unsigned long long AsciiSumHash(const char *str) {
 
     assert(str);
     
-    //int str_len = strlen(str); // TODO: в два раза замндлила функцию
+    //int str_len = strlen(str); // TODO: в два раза замндлила функцию // DONE
     int sum = 0;
 
     for (int i = 0; str[i] != '\0'; i++) 
@@ -181,8 +180,8 @@ unsigned long long AsciiSumHash(const char *str) {
 }
 
 unsigned long long RolFunc(unsigned long long number) { // Машинный код превращает это в rol
-    int shift = (sizeof(unsigned long long) << 3) - 1;  // TODO: делать скриншоты оптимизаций
-    return (number << 1) | (number >> shift);              // цикла на измерение хешей отдено
+    int shift = (sizeof(unsigned long long) << 3) - 1;  // TODO: делать скриншоты оптимизаций // DONE
+    return (number << 1) | (number >> shift);              // цикла на измерение хешей отдено // DONE
 }
 
 unsigned long long RorFunc(unsigned long long number) { // Машинный код превращает это в ror
@@ -195,7 +194,7 @@ unsigned long long RolHash(const char *str) {
     assert(str);
 
     unsigned long long hash = str[0];
-    //int str_len = strlen(str);
+    
     for (int i = 1; str[i] != '\0'; i++)
         hash = RolFunc(hash) ^ str[i]; 
 
@@ -207,7 +206,6 @@ unsigned long long RorHash(const char *str) {
     assert(str);
 
     unsigned long long hash = str[0];
-    //int str_len = strlen(str);
     
     for (int i = 1; str[i] != '\0'; i++)
         hash = RorFunc(hash) ^ str[i]; 
@@ -220,7 +218,6 @@ unsigned long long DJB2Hash(const char *str) {
     assert(str);
 
     unsigned long long hash = 5381;
-    //int str_len = strlen(str);
 
     for (int i = 1; str[i] != '\0'; i++)
         hash = ((hash << 5) + hash) + str[i]; /* hash * 33 + c */
@@ -232,15 +229,25 @@ const int POLY = 0x11EDC6F41;
 
 unsigned long long Crc32Hash_optimized(const char *str) {
 
-    // assert'a не будет
-
     unsigned long long start_hash = -1;
-    //int str_len = MyStrlen(str);
-    //int str_len = strlen(str);
+/*
+    for (int i = 0; str[i] != '\0'; i++)
+        start_hash = _mm_crc32_u8(start_hash, str[i]);
+*/
+ 
 
-    for (int i = 0; i < MAX_WORD_LENGTH / 4; i++)
-        start_hash = _mm_crc32_u64(start_hash, (__int64)str[i]); //TODO: crc32_u64 + развернуть - дооптимизировать
-
+    //__int64 part1, part2, part3, part4;
+    //memcpy(&part1, str,      8); 
+    //memcpy(&part2, str + 8,  8);
+    //memcpy(&part3, str + 16, 8);
+    //memcpy(&part4, str + 24, 8);
+    
+    //Этот вариант в два раза дольше чем простой обход
+    start_hash = _mm_crc32_u64(start_hash, *((const __int64 *)(str     )));
+    start_hash = _mm_crc32_u64(start_hash, *((const __int64 *)(str + 8 )));
+    start_hash = _mm_crc32_u64(start_hash, *((const __int64 *)(str + 16)));
+    start_hash = _mm_crc32_u64(start_hash, *((const __int64 *)(str + 24))); //TODO: crc32_u64 + развернуть - дооптимизировать // DONE (но это вдвое медленнее)
+    
     return start_hash;  
 }
 

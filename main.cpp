@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 
         CheckIfStringIsInTableCellAndInsertIt(&hash_table, curr_hash, curr_word);
     }
-    PrintHashFuncs();
+    //PrintHashFuncs();
     //PrintHashCellsSizes(&hash_table);
 
     size_t file_size = 0;
